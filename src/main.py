@@ -1,5 +1,4 @@
 # These imports are tricky because they use c++, do not move them
-from rdkit import Chem
 try:
     import graph_tool
 except ModuleNotFoundError:
@@ -19,10 +18,10 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
 
 from src import utils
-from src.datasets import guacamol_dataset, qm9_dataset
-from src.datasets.spectre_dataset import Comm20DataModule, PlanarDataModule, SpectreDatasetInfos
+from src.datasets import qm9_dataset
+from src.datasets.spectre_dataset import Comm20DataModule, SpectreDatasetInfos
 from src.metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstractMetrics
-from src.analysis.spectre_utils import PlanarSamplingMetrics, Comm20SamplingMetrics
+from src.analysis.spectre_utils import Comm20SamplingMetrics
 from src.diffusion_model import LiftedDenoisingDiffusion
 from src.diffusion_model_discrete import DiscreteDenoisingDiffusion
 from src.metrics.molecular_metrics import TrainMolecularMetrics, SamplingMolecularMetrics
@@ -89,13 +88,9 @@ def setup_wandb(cfg):
 def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
 
-    if dataset_config["name"] in ['comm-20', 'planar']:
-        if dataset_config['name'] == 'comm-20':
-            datamodule = Comm20DataModule(cfg)
-            sampling_metrics = Comm20SamplingMetrics(datamodule.dataloaders)
-        else:
-            datamodule = PlanarDataModule(cfg)
-            sampling_metrics = PlanarSamplingMetrics(datamodule.dataloaders)
+    if dataset_config['name'] == 'comm-20':
+        datamodule = Comm20DataModule(cfg)
+        sampling_metrics = Comm20SamplingMetrics(datamodule.dataloaders)
 
         dataset_infos = SpectreDatasetInfos(datamodule, dataset_config)
         train_metrics = TrainAbstractMetricsDiscrete() if cfg.model.type == 'discrete' else TrainAbstractMetrics()
@@ -114,21 +109,12 @@ def main(cfg: DictConfig):
                         'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
                         'extra_features': extra_features, 'domain_features': domain_features}
 
-    elif dataset_config["name"] in ['qm9', 'guacamol']:
-        if dataset_config["name"] == 'qm9':
-            datamodule = qm9_dataset.QM9DataModule(cfg)
-            dataset_infos = qm9_dataset.QM9infos(datamodule=datamodule, cfg=cfg)
-            datamodule.prepare_data()
-            train_smiles = qm9_dataset.get_train_smiles(cfg=cfg, train_dataloader=datamodule.train_dataloader(),
-                                                        dataset_infos=dataset_infos, evaluate_dataset=False)
-        elif dataset_config['name'] == 'guacamol':
-            datamodule = guacamol_dataset.GuacamolDataModule(cfg)
-            dataset_infos = guacamol_dataset.Guacamolinfos(datamodule, cfg)
-            datamodule.prepare_data()
-            train_smiles = None
-
-        else:
-            raise ValueError("Dataset not implemented")
+    elif dataset_config["name"] == 'qm9':
+        datamodule = qm9_dataset.QM9DataModule(cfg)
+        dataset_infos = qm9_dataset.QM9infos(datamodule=datamodule, cfg=cfg)
+        datamodule.prepare_data()
+        train_smiles = qm9_dataset.get_train_smiles(cfg=cfg, train_dataloader=datamodule.train_dataloader(),
+                                                    dataset_infos=dataset_infos, evaluate_dataset=False)
 
         if cfg.model.type == 'discrete' and cfg.model.extra_features is not None:
             extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)

@@ -520,18 +520,6 @@ def eval_acc_grid_graph(G_list, grid_start=10, grid_end=20):
     return count / float(len(G_list))
 
 
-def eval_acc_planar_graph(G_list):
-    count = 0
-    for gg in G_list:
-        if is_planar_graph(gg):
-            count += 1
-    return count / float(len(G_list))
-
-
-def is_planar_graph(G):
-    return nx.is_connected(G) and nx.check_planarity(G)[0]
-
-
 def is_lobster_graph(G):
     """
         Check a given graph is a lobster graph or not
@@ -748,22 +736,6 @@ class SpectreSamplingMetrics(nn.Module):
             to_log['orbit'] = orbit
             wandb.run.summary['orbit'] = orbit
 
-        if 'planar' in self.metrics_list:
-            print('Computing planar accuracy...')
-            planar_acc = eval_acc_planar_graph(networkx_graphs)
-            to_log['planar_acc'] = planar_acc
-            wandb.run.summary['planar_acc'] = planar_acc
-
-        if 'planar' in self.metrics_list:
-            print("Computing all fractions...")
-            frac_unique, frac_unique_non_isomorphic, fraction_unique_non_isomorphic_valid = eval_fraction_unique_non_isomorphic_valid(
-                networkx_graphs, self.train_graphs, is_planar_graph)
-            frac_non_isomorphic = 1.0 - eval_fraction_isomorphic(networkx_graphs, self.train_graphs)
-            to_log.update({'sampling/frac_unique': frac_unique,
-                           'sampling/frac_unique_non_iso': frac_unique_non_isomorphic,
-                           'sampling/frac_unic_non_iso_valid': fraction_unique_non_isomorphic_valid,
-                           'sampling/frac_non_iso': frac_non_isomorphic})
-
         print("Sampling statistics", to_log)
         wandb.log(to_log, commit=False)
 
@@ -776,10 +748,3 @@ class Comm20SamplingMetrics(SpectreSamplingMetrics):
         super().__init__(dataloaders=dataloaders,
                          compute_emd=True,
                          metrics_list=['degree', 'clustering', 'orbit'])
-
-
-class PlanarSamplingMetrics(SpectreSamplingMetrics):
-    def __init__(self, dataloaders):
-        super().__init__(dataloaders=dataloaders,
-                         compute_emd=False,
-                         metrics_list=['degree', 'clustering', 'orbit', 'spectre', 'planar'])

@@ -20,8 +20,8 @@ For the conditional generation experiments, check the `guidance` branch.
 
 ## Download the data
 
-  - QM9 and Guacamol should download by themselves when you run the code.
-  - For the community and planar datasets, data can be found at https://github.com/KarolisMart/SPECTRE/tree/main/data
+  - QM9 should download by themselves when you run the code.
+  - For the community dataset, data can be found at https://github.com/KarolisMart/SPECTRE/tree/main/data
 
 
 
@@ -33,16 +33,8 @@ For the conditional generation experiments, check the `guidance` branch.
   - To run a code on only a few batches: `python3 main.py general.name=test`.
   - To run the continuous model: `python3 main.py model=continuous`
   - To run the discrete model: `python3 main.py`
-  - You can specify the dataset with `python3 main.py dataset=guacamol`. Look at `configs/dataset` for the list
+  - You can specify the dataset with `python3 main.py dataset=comm20`. Look at `configs/dataset` for the list
 of datasets that are currently available
-
-## Checkpoints
-
-NOTE: since the code reformatting, these commits cannot be loaded anymore. If you want to use them, either use the commit `682e59019dd33073b1f0f4d3aaba7de6a308602e` or rename `src` to `dgd`, and then run `pip install -e .`
-
-We uploaded pretrained models for the Planar dataset. If you need other checkpoints, please write to us.
-
-Planar: https://drive.switch.ch/index.php/s/tZCjJ6VXU2Z3FIh
 
 ## Generated samples
 
