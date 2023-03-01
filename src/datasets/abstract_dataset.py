@@ -9,15 +9,12 @@ class AbstractDataModule(pl.LightningDataModule):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
-        self.dataloaders = None
-        self.input_dims = None
-        self.output_dims = None
 
     def prepare_data(self, datasets) -> None:
         batch_size = self.cfg.train.batch_size
         num_workers = self.cfg.train.num_workers
         self.dataloaders = {split: DataLoader(dataset, batch_size=batch_size, num_workers=num_workers,
-                                              shuffle='debug' not in self.cfg.general.name)
+                                              shuffle=True)
                             for split, dataset in datasets.items()}
 
     def train_dataloader(self):

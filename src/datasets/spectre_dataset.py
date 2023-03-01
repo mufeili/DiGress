@@ -1,6 +1,6 @@
 import os
 import torch
-import torch_geometric.utils
+import torch_geometric
 
 from torch.utils.data import random_split, Dataset
 
@@ -19,10 +19,12 @@ class Comm20Dataset(Dataset):
     def __getitem__(self, idx):
         adj = self.adjs[idx]
         n = adj.shape[-1]
+        # The graph has a single node type.
         X = torch.ones(n, 1, dtype=torch.float)
         y = torch.zeros([1, 0]).float()
         edge_index, _ = torch_geometric.utils.dense_to_sparse(adj)
         edge_attr = torch.zeros(edge_index.shape[-1], 2, dtype=torch.float)
+        # The graph has a single edge type.
         edge_attr[:, 1] = 1
         num_nodes = n * torch.ones(1, dtype=torch.long)
         data = torch_geometric.data.Data(x=X, edge_index=edge_index, edge_attr=edge_attr,
@@ -31,9 +33,8 @@ class Comm20Dataset(Dataset):
 
 
 class Comm20DataModule(AbstractDataModule):
-    def __init__(self, cfg, n_graphs=200):
+    def __init__(self, cfg):
         super().__init__(cfg)
-        self.n_graphs = n_graphs
         self.prepare_data()
         self.inner = self.train_dataloader()
 
