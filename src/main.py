@@ -45,6 +45,7 @@ def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
 
     if dataset_config['name'] == 'comm-20':
+        # Load the dataset, split it and prepare dataloaders.
         datamodule = Comm20DataModule(cfg)
         sampling_metrics = Comm20SamplingMetrics(datamodule.dataloaders)
 
