@@ -20,9 +20,9 @@ from pytorch_lightning.utilities.warnings import PossibleUserWarning
 
 from src import utils
 from src.datasets import guacamol_dataset, qm9_dataset, moses_dataset
-from src.datasets.spectre_dataset import SBMDataModule, Comm20DataModule, PlanarDataModule, SpectreDatasetInfos
+from src.datasets.spectre_dataset import Comm20DataModule, PlanarDataModule, SpectreDatasetInfos
 from src.metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstractMetrics
-from src.analysis.spectre_utils import PlanarSamplingMetrics, SBMSamplingMetrics, Comm20SamplingMetrics
+from src.analysis.spectre_utils import PlanarSamplingMetrics, Comm20SamplingMetrics
 from src.diffusion_model import LiftedDenoisingDiffusion
 from src.diffusion_model_discrete import DiscreteDenoisingDiffusion
 from src.metrics.molecular_metrics import TrainMolecularMetrics, SamplingMolecularMetrics
@@ -89,11 +89,8 @@ def setup_wandb(cfg):
 def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
 
-    if dataset_config["name"] in ['sbm', 'comm-20', 'planar']:
-        if dataset_config['name'] == 'sbm':
-            datamodule = SBMDataModule(cfg)
-            sampling_metrics = SBMSamplingMetrics(datamodule.dataloaders)
-        elif dataset_config['name'] == 'comm-20':
+    if dataset_config["name"] in ['comm-20', 'planar']:
+        if dataset_config['name'] == 'comm-20':
             datamodule = Comm20DataModule(cfg)
             sampling_metrics = Comm20SamplingMetrics(datamodule.dataloaders)
         else:

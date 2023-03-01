@@ -1,10 +1,10 @@
 # DiGress: Discrete Denoising diffusion models for graph generation (ICLR 2023)
 
 
-Warning: The code has been updated after experiments were run for the paper. If you don't manage to reproduce the 
+Warning: The code has been updated after experiments were run for the paper. If you don't manage to reproduce the
 paper results, please write to us so that we can investigate the issue.
 
-For the conditional generation experiments, check the `guidance` branch. 
+For the conditional generation experiments, check the `guidance` branch.
 
 ## Environment installation
   - Download anaconda/miniconda if needed
@@ -22,13 +22,13 @@ For the conditional generation experiments, check the `guidance` branch.
 ## Download the data
 
   - QM9 and Guacamol should download by themselves when you run the code.
-  - For the community, SBM and planar datasets, data can be found at https://github.com/KarolisMart/SPECTRE/tree/main/data
+  - For the community and planar datasets, data can be found at https://github.com/KarolisMart/SPECTRE/tree/main/data
   - Moses dataset can be found at https://github.com/molecularsets/moses/tree/master/data
-  
+
 
 
 ## Run the code
-  
+
   - All code is currently launched through `python3 main.py`. Check hydra documentation (https://hydra.cc/) for overriding default parameters.
   - To run the debugging code: `python3 main.py +experiment=debug.yaml`. We advise to try to run the debug mode first
     before launching full experiments.
@@ -37,21 +37,20 @@ For the conditional generation experiments, check the `guidance` branch.
   - To run the discrete model: `python3 main.py`
   - You can specify the dataset with `python3 main.py dataset=guacamol`. Look at `configs/dataset` for the list
 of datasets that are currently available
-    
+
 ## Checkpoints
 
 NOTE: since the code reformatting, these commits cannot be loaded anymore. If you want to use them, either use the commit `682e59019dd33073b1f0f4d3aaba7de6a308602e` or rename `src` to `dgd`, and then run `pip install -e .`
 
-We uploaded pretrained models for the Planar and SBM datasets. If you need other checkpoints, please write to us.
+We uploaded pretrained models for the Planar dataset. If you need other checkpoints, please write to us.
 
 Planar: https://drive.switch.ch/index.php/s/tZCjJ6VXU2Z3FIh
-SBM: https://drive.switch.ch/index.php/s/rxWFVQX4Cu4Vq5j
 
 ## Generated samples
 
 We provide the generated samples for some of the models. If you have retrained a model from scratch for which the samples are
 not available yet, we would be very happy if you could send them to us!
-    
+
 ## Cite the paper
 
 ```

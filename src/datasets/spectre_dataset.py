@@ -9,7 +9,7 @@ from src.datasets.abstract_dataset import AbstractDataModule, AbstractDatasetInf
 
 class SpectreGraphDataset(Dataset):
     def __init__(self, data_file):
-        """ This class can be used to load the comm20, sbm and planar datasets. """
+        """ This class can be used to load the comm20 and planar datasets. """
         base_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, os.pardir, 'data')
         filename = os.path.join(base_path, data_file)
         self.adjs, self.eigvals, self.eigvecs, self.n_nodes, self.max_eigval, self.min_eigval, self.same_sample, self.n_max = torch.load(
@@ -36,11 +36,6 @@ class SpectreGraphDataset(Dataset):
 class Comm20Dataset(SpectreGraphDataset):
     def __init__(self):
         super().__init__('community_12_21_100.pt')
-
-
-class SBMDataset(SpectreGraphDataset):
-    def __init__(self):
-        super().__init__('sbm_200.pt')
 
 
 class PlanarDataset(SpectreGraphDataset):
@@ -72,12 +67,6 @@ class SpectreGraphDataModule(AbstractDataModule):
 class Comm20DataModule(SpectreGraphDataModule):
     def prepare_data(self):
         graphs = Comm20Dataset()
-        return super().prepare_data(graphs)
-
-
-class SBMDataModule(SpectreGraphDataModule):
-    def prepare_data(self):
-        graphs = SBMDataset()
         return super().prepare_data(graphs)
 
 
