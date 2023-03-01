@@ -28,13 +28,7 @@ For the conditional generation experiments, check the `guidance` branch.
 ## Run the code
 
   - All code is currently launched through `python3 main.py`. Check hydra documentation (https://hydra.cc/) for overriding default parameters.
-  - To run the debugging code: `python3 main.py +experiment=debug.yaml`. We advise to try to run the debug mode first
-    before launching full experiments.
-  - To run a code on only a few batches: `python3 main.py general.name=test`.
-  - To run the continuous model: `python3 main.py model=continuous`
-  - To run the discrete model: `python3 main.py`
-  - You can specify the dataset with `python3 main.py dataset=comm20`. Look at `configs/dataset` for the list
-of datasets that are currently available
+  - You can specify the dataset with `python3 main.py dataset=comm20`. Look at `configs/dataset` for the list of datasets that are currently available
 
 ## Generated samples
 
