@@ -1,20 +1,17 @@
 import os
-
 import torch
-from torch.utils.data import random_split, Dataset
 import torch_geometric.utils
+
+from torch.utils.data import random_split, Dataset
 
 from src.datasets.abstract_dataset import AbstractDataModule, AbstractDatasetInfos
 
-
-class SpectreGraphDataset(Dataset):
-    def __init__(self, data_file):
+class Comm20Dataset(Dataset):
+    def __init__(self):
         """ This class can be used to load the comm20 dataset. """
         base_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, os.pardir, 'data')
-        filename = os.path.join(base_path, data_file)
-        self.adjs, self.eigvals, self.eigvecs, self.n_nodes, self.max_eigval, self.min_eigval, self.same_sample, self.n_max = torch.load(
-            filename)
-        print(f'Dataset {filename} loaded from file')
+        filename = os.path.join(base_path, 'community_12_21_100.pt')
+        self.adjs, _, _, _, _, _, _, _ = torch.load(filename)
 
     def __len__(self):
         return len(self.adjs)
@@ -33,22 +30,15 @@ class SpectreGraphDataset(Dataset):
         return data
 
 
-class Comm20Dataset(SpectreGraphDataset):
-    def __init__(self):
-        super().__init__('community_12_21_100.pt')
-
-
-class SpectreGraphDataModule(AbstractDataModule):
+class Comm20DataModule(AbstractDataModule):
     def __init__(self, cfg, n_graphs=200):
         super().__init__(cfg)
         self.n_graphs = n_graphs
         self.prepare_data()
         self.inner = self.train_dataloader()
 
-    def __getitem__(self, item):
-        return self.inner[item]
-
-    def prepare_data(self, graphs):
+    def prepare_data(self):
+        graphs = Comm20Dataset()
         test_len = int(round(len(graphs) * 0.2))
         train_len = int(round((len(graphs) - test_len) * 0.8))
         val_len = len(graphs) - train_len - test_len
@@ -58,11 +48,8 @@ class SpectreGraphDataModule(AbstractDataModule):
         datasets = {'train': splits[0], 'val': splits[1], 'test': splits[2]}
         super().prepare_data(datasets)
 
-
-class Comm20DataModule(SpectreGraphDataModule):
-    def prepare_data(self):
-        graphs = Comm20Dataset()
-        return super().prepare_data(graphs)
+    def __getitem__(self, item):
+        return self.inner[item]
 
 
 class SpectreDatasetInfos(AbstractDatasetInfos):
@@ -73,4 +60,3 @@ class SpectreDatasetInfos(AbstractDatasetInfos):
         self.node_types = torch.Tensor([1])               # There are no node types
         self.edge_types = self.datamodule.edge_counts()
         super().complete_infos(self.n_nodes, self.node_types)
-

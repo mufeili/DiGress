@@ -10,48 +10,6 @@ import wandb
 import torch.nn as nn
 
 
-class TrainMolecularMetrics(nn.Module):
-    def __init__(self, remove_h):
-        super().__init__()
-        self.train_atom_metrics = AtomMetrics(remove_h)
-        self.train_bond_metrics = BondMetrics()
-
-    def forward(self, masked_pred_epsX, masked_pred_epsE, pred_y, true_epsX, true_epsE, true_y, log: bool):
-        self.train_atom_metrics(masked_pred_epsX, true_epsX)
-        self.train_bond_metrics(masked_pred_epsE, true_epsE)
-        if log:
-            to_log = {}
-            for key, val in self.train_atom_metrics.compute().items():
-                to_log['train/' + key] = val.item()
-            for key, val in self.train_bond_metrics.compute().items():
-                to_log['train/' + key] = val.item()
-
-            wandb.log(to_log, commit=False)
-
-    def reset(self):
-        for metric in [self.train_atom_metrics, self.train_bond_metrics]:
-            metric.reset()
-
-    def log_epoch_metrics(self, current_epoch):
-        epoch_atom_metrics = self.train_atom_metrics.compute()
-        epoch_bond_metrics = self.train_bond_metrics.compute()
-
-        to_log = {}
-        for key, val in epoch_atom_metrics.items():
-            to_log['train_epoch/epoch' + key] = val.item()
-        for key, val in epoch_bond_metrics.items():
-            to_log['train_epoch/epoch' + key] = val.item()
-
-        wandb.log(to_log, commit=False)
-
-        for key, val in epoch_atom_metrics.items():
-            epoch_atom_metrics[key] = f"{val.item() :.3f}"
-        for key, val in epoch_bond_metrics.items():
-            epoch_bond_metrics[key] = f"{val.item() :.3f}"
-
-        print(f"Epoch {current_epoch}: {epoch_atom_metrics} -- {epoch_bond_metrics}")
-
-
 class SamplingMolecularMetrics(nn.Module):
     def __init__(self, dataset_infos, train_smiles):
         super().__init__()

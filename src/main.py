@@ -1,11 +1,10 @@
 # These imports are tricky because they use c++, do not move them
+from rdkit import Chem
 try:
     import graph_tool
 except ModuleNotFoundError:
     pass
 
-import os
-import pathlib
 import warnings
 
 import torch
@@ -22,57 +21,14 @@ from src.datasets import qm9_dataset
 from src.datasets.spectre_dataset import Comm20DataModule, SpectreDatasetInfos
 from src.metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstractMetrics
 from src.analysis.spectre_utils import Comm20SamplingMetrics
-from src.diffusion_model import LiftedDenoisingDiffusion
 from src.diffusion_model_discrete import DiscreteDenoisingDiffusion
-from src.metrics.molecular_metrics import TrainMolecularMetrics, SamplingMolecularMetrics
+from src.metrics.molecular_metrics import SamplingMolecularMetrics
 from src.metrics.molecular_metrics_discrete import TrainMolecularMetricsDiscrete
 from src.analysis.visualization import MolecularVisualization, NonMolecularVisualization
 from src.diffusion.extra_features import DummyExtraFeatures, ExtraFeatures
 from src.diffusion.extra_features_molecular import ExtraMolecularFeatures
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
-
-
-def get_resume(cfg, model_kwargs):
-    """ Resumes a run. It loads previous config without allowing to update keys (used for testing). """
-    saved_cfg = cfg.copy()
-    name = cfg.general.name + '_resume'
-    resume = cfg.general.test_only
-    if cfg.model.type == 'discrete':
-        model = DiscreteDenoisingDiffusion.load_from_checkpoint(resume, **model_kwargs)
-    else:
-        model = LiftedDenoisingDiffusion.load_from_checkpoint(resume, **model_kwargs)
-    cfg = model.cfg
-    cfg.general.test_only = resume
-    cfg.general.name = name
-    cfg = utils.update_config_with_new_keys(cfg, saved_cfg)
-    return cfg, model
-
-
-def get_resume_adaptive(cfg, model_kwargs):
-    """ Resumes a run. It loads previous config but allows to make some changes (used for resuming training)."""
-    saved_cfg = cfg.copy()
-    # Fetch path to this file to get base path
-    current_path = os.path.dirname(os.path.realpath(__file__))
-    root_dir = current_path.split('outputs')[0]
-
-    resume_path = os.path.join(root_dir, cfg.general.resume)
-
-    if cfg.model.type == 'discrete':
-        model = DiscreteDenoisingDiffusion.load_from_checkpoint(resume_path, **model_kwargs)
-    else:
-        model = LiftedDenoisingDiffusion.load_from_checkpoint(resume_path, **model_kwargs)
-    new_cfg = model.cfg
-
-    for category in cfg:
-        for arg in cfg[category]:
-            new_cfg[category][arg] = cfg[category][arg]
-
-    new_cfg.general.resume = resume_path
-    new_cfg.general.name = new_cfg.general.name + '_resume'
-
-    new_cfg = cfg.update_config_with_new_keys(new_cfg, saved_cfg)
-    return new_cfg, model
 
 
 def setup_wandb(cfg):
@@ -96,10 +52,7 @@ def main(cfg: DictConfig):
         train_metrics = TrainAbstractMetricsDiscrete() if cfg.model.type == 'discrete' else TrainAbstractMetrics()
         visualization_tools = NonMolecularVisualization()
 
-        if cfg.model.type == 'discrete' and cfg.model.extra_features is not None:
-            extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
-        else:
-            extra_features = DummyExtraFeatures()
+        extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
         domain_features = DummyExtraFeatures()
 
         dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
@@ -116,20 +69,13 @@ def main(cfg: DictConfig):
         train_smiles = qm9_dataset.get_train_smiles(cfg=cfg, train_dataloader=datamodule.train_dataloader(),
                                                     dataset_infos=dataset_infos, evaluate_dataset=False)
 
-        if cfg.model.type == 'discrete' and cfg.model.extra_features is not None:
-            extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
-            domain_features = ExtraMolecularFeatures(dataset_infos=dataset_infos)
-        else:
-            extra_features = DummyExtraFeatures()
-            domain_features = DummyExtraFeatures()
+        extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
+        domain_features = ExtraMolecularFeatures(dataset_infos=dataset_infos)
 
         dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
                                                 domain_features=domain_features)
 
-        if cfg.model.type == 'discrete':
-            train_metrics = TrainMolecularMetricsDiscrete(dataset_infos)
-        else:
-            train_metrics = TrainMolecularMetrics(dataset_infos)
+        train_metrics = TrainMolecularMetricsDiscrete(dataset_infos)
 
         # We do not evaluate novelty during training
         sampling_metrics = SamplingMolecularMetrics(dataset_infos, train_smiles)
@@ -141,22 +87,10 @@ def main(cfg: DictConfig):
     else:
         raise NotImplementedError("Unknown dataset {}".format(cfg["dataset"]))
 
-    if cfg.general.test_only:
-        # When testing, previous configuration is fully loaded
-        cfg, _ = get_resume(cfg, model_kwargs)
-        os.chdir(cfg.general.test_only.split('checkpoints')[0])
-    elif cfg.general.resume is not None:
-        # When resuming, we can override some parts of previous configuration
-        cfg, _ = get_resume_adaptive(cfg, model_kwargs)
-        os.chdir(cfg.general.resume.split('checkpoints')[0])
-
     utils.create_folders(cfg)
     cfg = setup_wandb(cfg)
 
-    if cfg.model.type == 'discrete':
-        model = DiscreteDenoisingDiffusion(cfg=cfg, **model_kwargs)
-    else:
-        model = LiftedDenoisingDiffusion(cfg=cfg, **model_kwargs)
+    model = DiscreteDenoisingDiffusion(cfg=cfg, **model_kwargs)
 
     callbacks = []
     if cfg.train.save_model:
@@ -194,25 +128,7 @@ def main(cfg: DictConfig):
                       callbacks=callbacks,
                       logger=[])
 
-    if not cfg.general.test_only:
-        trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.general.resume)
-        if cfg.general.name not in ['debug', 'test']:
-            trainer.test(model, datamodule=datamodule)
-    else:
-        # Start by evaluating test_only_path
-        trainer.test(model, datamodule=datamodule, ckpt_path=cfg.general.test_only)
-        if cfg.general.evaluate_all_checkpoints:
-            directory = pathlib.Path(cfg.general.test_only).parents[0]
-            print("Directory:", directory)
-            files_list = os.listdir(directory)
-            for file in files_list:
-                if '.ckpt' in file:
-                    ckpt_path = os.path.join(directory, file)
-                    if ckpt_path == cfg.general.test_only:
-                        continue
-                    print("Loading checkpoint", ckpt_path)
-                    setup_wandb(cfg)
-                    trainer.test(model, datamodule=datamodule, ckpt_path=ckpt_path)
+    trainer.fit(model, datamodule=datamodule)
 
 
 if __name__ == '__main__':
