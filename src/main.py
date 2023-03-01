@@ -19,7 +19,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
 
 from src import utils
-from src.datasets import guacamol_dataset, qm9_dataset, moses_dataset
+from src.datasets import guacamol_dataset, qm9_dataset
 from src.datasets.spectre_dataset import Comm20DataModule, PlanarDataModule, SpectreDatasetInfos
 from src.metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstractMetrics
 from src.analysis.spectre_utils import PlanarSamplingMetrics, Comm20SamplingMetrics
@@ -114,7 +114,7 @@ def main(cfg: DictConfig):
                         'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
                         'extra_features': extra_features, 'domain_features': domain_features}
 
-    elif dataset_config["name"] in ['qm9', 'guacamol', 'moses']:
+    elif dataset_config["name"] in ['qm9', 'guacamol']:
         if dataset_config["name"] == 'qm9':
             datamodule = qm9_dataset.QM9DataModule(cfg)
             dataset_infos = qm9_dataset.QM9infos(datamodule=datamodule, cfg=cfg)
@@ -127,11 +127,6 @@ def main(cfg: DictConfig):
             datamodule.prepare_data()
             train_smiles = None
 
-        elif dataset_config.name == 'moses':
-            datamodule = moses_dataset.MOSESDataModule(cfg)
-            dataset_infos = moses_dataset.MOSESinfos(datamodule, cfg)
-            datamodule.prepare_data()
-            train_smiles = None
         else:
             raise ValueError("Dataset not implemented")
 

@@ -14,7 +14,6 @@ For the conditional generation experiments, check the `guidance` branch.
   - Install pytorch 1.10 or 1.11 (https://pytorch.org/)
   - Install pytorch-geometric. Your version should match the pytorch version that is installed (https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html)
   - Install other packages using the requirement file: `pip install -r requirements.txt`
-  - Install mini-moses: `pip install git+https://github.com/igor-krawczuk/mini-moses`
   - Run `pip install -e .`
   - Navigate to the ./src/analysis/orca directory and compile orca.cpp: `g++ -O2 -std=c++11 -o orca orca.cpp`
 
@@ -23,7 +22,6 @@ For the conditional generation experiments, check the `guidance` branch.
 
   - QM9 and Guacamol should download by themselves when you run the code.
   - For the community and planar datasets, data can be found at https://github.com/KarolisMart/SPECTRE/tree/main/data
-  - Moses dataset can be found at https://github.com/molecularsets/moses/tree/master/data
 
 
 
