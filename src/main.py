@@ -59,10 +59,6 @@ def main(cfg: DictConfig):
         dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
                                                 domain_features=domain_features)
 
-        model_kwargs = {'dataset_infos': dataset_infos, 'train_metrics': train_metrics,
-                        'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
-                        'extra_features': extra_features, 'domain_features': domain_features}
-
     elif dataset_config["name"] == 'qm9':
         datamodule = qm9_dataset.QM9DataModule(cfg)
         dataset_infos = qm9_dataset.QM9infos(datamodule=datamodule, cfg=cfg)
@@ -82,11 +78,12 @@ def main(cfg: DictConfig):
         sampling_metrics = SamplingMolecularMetrics(dataset_infos, train_smiles)
         visualization_tools = MolecularVisualization(cfg.dataset.remove_h, dataset_infos=dataset_infos)
 
-        model_kwargs = {'dataset_infos': dataset_infos, 'train_metrics': train_metrics,
-                        'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
-                        'extra_features': extra_features, 'domain_features': domain_features}
     else:
         raise NotImplementedError("Unknown dataset {}".format(cfg["dataset"]))
+
+    model_kwargs = {'dataset_infos': dataset_infos, 'train_metrics': train_metrics,
+                    'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
+                    'extra_features': extra_features, 'domain_features': domain_features}
 
     utils.create_folders(cfg)
     cfg = setup_wandb(cfg)
@@ -106,21 +103,17 @@ def main(cfg: DictConfig):
         callbacks.append(checkpoint_callback)
 
     name = cfg.general.name
-    if name == 'test':
-        print("[WARNING]: Run is called 'test' -- it will run in debug mode on 20 batches. ")
-    elif name == 'debug':
-        print("[WARNING]: Run is called 'debug' -- it will run with fast_dev_run. ")
     trainer = Trainer(gradient_clip_val=cfg.train.clip_grad,
                       accelerator='gpu' if torch.cuda.is_available() and cfg.general.gpus > 0 else 'cpu',
                       devices=cfg.general.gpus if torch.cuda.is_available() and cfg.general.gpus > 0 else None,
-                      limit_train_batches=20 if name == 'test' else None,
-                      limit_val_batches=20 if name == 'test' else None,
-                      limit_test_batches=20 if name == 'test' else None,
+                      limit_train_batches=None,
+                      limit_val_batches=None,
+                      limit_test_batches=None,
                       val_check_interval=cfg.general.val_check_interval,
                       max_epochs=cfg.train.n_epochs,
                       check_val_every_n_epoch=cfg.general.check_val_every_n_epochs,
-                      fast_dev_run=cfg.general.name == 'debug',
-                      strategy='ddp' if cfg.general.gpus > 1 else None,
+                      fast_dev_run=False,
+                      strategy=None,
                       enable_progress_bar=False,
                       callbacks=callbacks,
                       logger=[])
