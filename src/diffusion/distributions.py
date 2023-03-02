@@ -7,13 +7,7 @@ class DistributionNodes:
             historgram: dict. The keys are num_nodes, the values are counts
         """
 
-        if type(histogram) == dict:
-            max_n_nodes = max(histogram.keys())
-            prob = torch.zeros(max_n_nodes + 1)
-            for num_nodes, count in histogram.items():
-                prob[num_nodes] = count
-        else:
-            prob = histogram
+        prob = histogram
 
         self.prob = prob / prob.sum()
         self.m = torch.distributions.Categorical(prob)

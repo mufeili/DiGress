@@ -4,9 +4,6 @@ from src import utils
 
 
 class DummyExtraFeatures:
-    def __init__(self):
-        """ This class does not compute anything, just returns empty tensors."""
-
     def __call__(self, noisy_data):
         X = noisy_data['X_t']
         E = noisy_data['E_t']
@@ -17,42 +14,76 @@ class DummyExtraFeatures:
         return utils.PlaceHolder(X=empty_x, E=empty_e, y=empty_y)
 
 
-class ExtraFeatures:
-    def __init__(self, extra_features_type, dataset_info):
-        self.max_n_nodes = dataset_info.max_n_nodes
-        self.ncycles = NodeCycleFeatures()
-        self.features_type = extra_features_type
-        if extra_features_type in ['eigenvalues', 'all']:
-            self.eigenfeatures = EigenFeatures(mode=extra_features_type)
+class KNodeCycles:
+    """ Builds cycle counts for each node in a graph.
+    """
 
-    def __call__(self, noisy_data):
-        n = noisy_data['node_mask'].sum(dim=1).unsqueeze(1) / self.max_n_nodes
-        x_cycles, y_cycles = self.ncycles(noisy_data)       # (bs, n_cycles)
+    def __init__(self):
+        super().__init__()
 
-        if self.features_type == 'cycles':
-            E = noisy_data['E_t']
-            extra_edge_attr = torch.zeros((*E.shape[:-1], 0)).type_as(E)
-            return utils.PlaceHolder(X=x_cycles, E=extra_edge_attr, y=torch.hstack((n, y_cycles)))
+    def calculate_kpowers(self):
+        self.k1_matrix = self.adj_matrix.float()
+        self.d = self.adj_matrix.sum(dim=-1)
+        self.k2_matrix = self.k1_matrix @ self.adj_matrix.float()
+        self.k3_matrix = self.k2_matrix @ self.adj_matrix.float()
+        self.k4_matrix = self.k3_matrix @ self.adj_matrix.float()
+        self.k5_matrix = self.k4_matrix @ self.adj_matrix.float()
+        self.k6_matrix = self.k5_matrix @ self.adj_matrix.float()
 
-        elif self.features_type == 'eigenvalues':
-            eigenfeatures = self.eigenfeatures(noisy_data)
-            E = noisy_data['E_t']
-            extra_edge_attr = torch.zeros((*E.shape[:-1], 0)).type_as(E)
-            n_components, batched_eigenvalues = eigenfeatures   # (bs, 1), (bs, 10)
-            return utils.PlaceHolder(X=x_cycles, E=extra_edge_attr, y=torch.hstack((n, y_cycles, n_components,
-                                                                                    batched_eigenvalues)))
-        elif self.features_type == 'all':
-            eigenfeatures = self.eigenfeatures(noisy_data)
-            E = noisy_data['E_t']
-            extra_edge_attr = torch.zeros((*E.shape[:-1], 0)).type_as(E)
-            n_components, batched_eigenvalues, nonlcc_indicator, k_lowest_eigvec = eigenfeatures   # (bs, 1), (bs, 10),
-                                                                                                # (bs, n, 1), (bs, n, 2)
+    def k3_cycle(self):
+        """ tr(A ** 3). """
+        c3 = batch_diagonal(self.k3_matrix)
+        return (c3 / 2).unsqueeze(-1).float(), (torch.sum(c3, dim=-1) / 6).unsqueeze(-1).float()
 
-            return utils.PlaceHolder(X=torch.cat((x_cycles, nonlcc_indicator, k_lowest_eigvec), dim=-1),
-                                     E=extra_edge_attr,
-                                     y=torch.hstack((n, y_cycles, n_components, batched_eigenvalues)))
-        else:
-            raise ValueError(f"Features type {self.features_type} not implemented")
+    def k4_cycle(self):
+        diag_a4 = batch_diagonal(self.k4_matrix)
+        c4 = diag_a4 - self.d * (self.d - 1) - (self.adj_matrix @ self.d.unsqueeze(-1)).sum(dim=-1)
+        return (c4 / 2).unsqueeze(-1).float(), (torch.sum(c4, dim=-1) / 8).unsqueeze(-1).float()
+
+    def k5_cycle(self):
+        diag_a5 = batch_diagonal(self.k5_matrix)
+        triangles = batch_diagonal(self.k3_matrix)
+
+        c5 = diag_a5 - 2 * triangles * self.d - (self.adj_matrix @ triangles.unsqueeze(-1)).sum(dim=-1) + triangles
+        return (c5 / 2).unsqueeze(-1).float(), (c5.sum(dim=-1) / 10).unsqueeze(-1).float()
+
+    def k6_cycle(self):
+        term_1_t = batch_trace(self.k6_matrix)
+        term_2_t = batch_trace(self.k3_matrix ** 2)
+        term3_t = torch.sum(self.adj_matrix * self.k2_matrix.pow(2), dim=[-2, -1])
+        d_t4 = batch_diagonal(self.k2_matrix)
+        a_4_t = batch_diagonal(self.k4_matrix)
+        term_4_t = (d_t4 * a_4_t).sum(dim=-1)
+        term_5_t = batch_trace(self.k4_matrix)
+        term_6_t = batch_trace(self.k3_matrix)
+        term_7_t = batch_diagonal(self.k2_matrix).pow(3).sum(-1)
+        term8_t = torch.sum(self.k3_matrix, dim=[-2, -1])
+        term9_t = batch_diagonal(self.k2_matrix).pow(2).sum(-1)
+        term10_t = batch_trace(self.k2_matrix)
+
+        c6_t = (term_1_t - 3 * term_2_t + 9 * term3_t - 6 * term_4_t + 6 * term_5_t - 4 * term_6_t + 4 * term_7_t +
+                3 * term8_t - 12 * term9_t + 4 * term10_t)
+        return None, (c6_t / 12).unsqueeze(-1).float()
+
+    def k_cycles(self, adj_matrix, verbose=False):
+        self.adj_matrix = adj_matrix
+        self.calculate_kpowers()
+
+        k3x, k3y = self.k3_cycle()
+        assert (k3x >= -0.1).all()
+
+        k4x, k4y = self.k4_cycle()
+        assert (k4x >= -0.1).all()
+
+        k5x, k5y = self.k5_cycle()
+        assert (k5x >= -0.1).all(), k5x
+
+        _, k6y = self.k6_cycle()
+        assert (k6y >= -0.1).all()
+
+        kcyclesx = torch.cat([k3x, k4x, k5x], dim=-1)
+        kcyclesy = torch.cat([k3y, k4y, k5y, k6y], dim=-1)
+        return kcyclesx, kcyclesy
 
 
 class NodeCycleFeatures:
@@ -76,10 +107,6 @@ class EigenFeatures:
     """
     Code taken from : https://github.com/Saro00/DGN/blob/master/models/pytorch/eigen_agg.py
     """
-    def __init__(self, mode):
-        """ mode: 'eigenvalues' or 'all' """
-        self.mode = mode
-
     def __call__(self, noisy_data):
         E_t = noisy_data['E_t']
         mask = noisy_data['node_mask']
@@ -89,27 +116,38 @@ class EigenFeatures:
         mask_diag = mask_diag * (~mask.unsqueeze(1)) * (~mask.unsqueeze(2))
         L = L * mask.unsqueeze(1) * mask.unsqueeze(2) + mask_diag
 
-        if self.mode == 'eigenvalues':
-            eigvals = torch.linalg.eigvalsh(L)        # bs, n
-            eigvals = eigvals.type_as(A) / torch.sum(mask, dim=1, keepdim=True)
+        eigvals, eigvectors = torch.linalg.eigh(L)
+        eigvals = eigvals.type_as(A) / torch.sum(mask, dim=1, keepdim=True)
+        eigvectors = eigvectors * mask.unsqueeze(2) * mask.unsqueeze(1)
+        # Retrieve eigenvalues features
+        n_connected_comp, batch_eigenvalues = get_eigenvalues_features(eigenvalues=eigvals)
 
-            n_connected_comp, batch_eigenvalues = get_eigenvalues_features(eigenvalues=eigvals)
-            return n_connected_comp.type_as(A), batch_eigenvalues.type_as(A)
+        # Retrieve eigenvectors features
+        nonlcc_indicator, k_lowest_eigenvector = get_eigenvectors_features(vectors=eigvectors,
+                                                                           node_mask=noisy_data['node_mask'],
+                                                                           n_connected=n_connected_comp)
+        return n_connected_comp, batch_eigenvalues, nonlcc_indicator, k_lowest_eigenvector
 
-        elif self.mode == 'all':
-            eigvals, eigvectors = torch.linalg.eigh(L)
-            eigvals = eigvals.type_as(A) / torch.sum(mask, dim=1, keepdim=True)
-            eigvectors = eigvectors * mask.unsqueeze(2) * mask.unsqueeze(1)
-            # Retrieve eigenvalues features
-            n_connected_comp, batch_eigenvalues = get_eigenvalues_features(eigenvalues=eigvals)
 
-            # Retrieve eigenvectors features
-            nonlcc_indicator, k_lowest_eigenvector = get_eigenvectors_features(vectors=eigvectors,
-                                                                               node_mask=noisy_data['node_mask'],
-                                                                               n_connected=n_connected_comp)
-            return n_connected_comp, batch_eigenvalues, nonlcc_indicator, k_lowest_eigenvector
-        else:
-            raise NotImplementedError(f"Mode {self.mode} is not implemented")
+class ExtraFeatures:
+    def __init__(self, dataset_info):
+        self.max_n_nodes = dataset_info.max_n_nodes
+        self.ncycles = NodeCycleFeatures()
+        self.eigenfeatures = EigenFeatures()
+
+    def __call__(self, noisy_data):
+        n = noisy_data['node_mask'].sum(dim=1).unsqueeze(1) / self.max_n_nodes
+        x_cycles, y_cycles = self.ncycles(noisy_data)       # (bs, n_cycles)
+
+        eigenfeatures = self.eigenfeatures(noisy_data)
+        E = noisy_data['E_t']
+        extra_edge_attr = torch.zeros((*E.shape[:-1], 0)).type_as(E)
+        n_components, batched_eigenvalues, nonlcc_indicator, k_lowest_eigvec = eigenfeatures   # (bs, 1), (bs, 10),
+                                                                                                # (bs, n, 1), (bs, n, 2)
+
+        return utils.PlaceHolder(X=torch.cat((x_cycles, nonlcc_indicator, k_lowest_eigvec), dim=-1),
+                                 E=extra_edge_attr,
+                                 y=torch.hstack((n, y_cycles, n_components, batched_eigenvalues)))
 
 
 def compute_laplacian(adjacency, normalize: bool):
@@ -216,75 +254,3 @@ def batch_diagonal(X):
     :return:
     """
     return torch.diagonal(X, dim1=-2, dim2=-1)
-
-
-class KNodeCycles:
-    """ Builds cycle counts for each node in a graph.
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def calculate_kpowers(self):
-        self.k1_matrix = self.adj_matrix.float()
-        self.d = self.adj_matrix.sum(dim=-1)
-        self.k2_matrix = self.k1_matrix @ self.adj_matrix.float()
-        self.k3_matrix = self.k2_matrix @ self.adj_matrix.float()
-        self.k4_matrix = self.k3_matrix @ self.adj_matrix.float()
-        self.k5_matrix = self.k4_matrix @ self.adj_matrix.float()
-        self.k6_matrix = self.k5_matrix @ self.adj_matrix.float()
-
-    def k3_cycle(self):
-        """ tr(A ** 3). """
-        c3 = batch_diagonal(self.k3_matrix)
-        return (c3 / 2).unsqueeze(-1).float(), (torch.sum(c3, dim=-1) / 6).unsqueeze(-1).float()
-
-    def k4_cycle(self):
-        diag_a4 = batch_diagonal(self.k4_matrix)
-        c4 = diag_a4 - self.d * (self.d - 1) - (self.adj_matrix @ self.d.unsqueeze(-1)).sum(dim=-1)
-        return (c4 / 2).unsqueeze(-1).float(), (torch.sum(c4, dim=-1) / 8).unsqueeze(-1).float()
-
-    def k5_cycle(self):
-        diag_a5 = batch_diagonal(self.k5_matrix)
-        triangles = batch_diagonal(self.k3_matrix)
-
-        c5 = diag_a5 - 2 * triangles * self.d - (self.adj_matrix @ triangles.unsqueeze(-1)).sum(dim=-1) + triangles
-        return (c5 / 2).unsqueeze(-1).float(), (c5.sum(dim=-1) / 10).unsqueeze(-1).float()
-
-    def k6_cycle(self):
-        term_1_t = batch_trace(self.k6_matrix)
-        term_2_t = batch_trace(self.k3_matrix ** 2)
-        term3_t = torch.sum(self.adj_matrix * self.k2_matrix.pow(2), dim=[-2, -1])
-        d_t4 = batch_diagonal(self.k2_matrix)
-        a_4_t = batch_diagonal(self.k4_matrix)
-        term_4_t = (d_t4 * a_4_t).sum(dim=-1)
-        term_5_t = batch_trace(self.k4_matrix)
-        term_6_t = batch_trace(self.k3_matrix)
-        term_7_t = batch_diagonal(self.k2_matrix).pow(3).sum(-1)
-        term8_t = torch.sum(self.k3_matrix, dim=[-2, -1])
-        term9_t = batch_diagonal(self.k2_matrix).pow(2).sum(-1)
-        term10_t = batch_trace(self.k2_matrix)
-
-        c6_t = (term_1_t - 3 * term_2_t + 9 * term3_t - 6 * term_4_t + 6 * term_5_t - 4 * term_6_t + 4 * term_7_t +
-                3 * term8_t - 12 * term9_t + 4 * term10_t)
-        return None, (c6_t / 12).unsqueeze(-1).float()
-
-    def k_cycles(self, adj_matrix, verbose=False):
-        self.adj_matrix = adj_matrix
-        self.calculate_kpowers()
-
-        k3x, k3y = self.k3_cycle()
-        assert (k3x >= -0.1).all()
-
-        k4x, k4y = self.k4_cycle()
-        assert (k4x >= -0.1).all()
-
-        k5x, k5y = self.k5_cycle()
-        assert (k5x >= -0.1).all(), k5x
-
-        _, k6y = self.k6_cycle()
-        assert (k6y >= -0.1).all()
-
-        kcyclesx = torch.cat([k3x, k4x, k5x], dim=-1)
-        kcyclesy = torch.cat([k3y, k4y, k5y, k6y], dim=-1)
-        return kcyclesx, kcyclesy

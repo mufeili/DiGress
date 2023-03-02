@@ -1,10 +1,4 @@
 # These imports are tricky because they use c++, do not move them
-from rdkit import Chem
-try:
-    import graph_tool
-except ModuleNotFoundError:
-    pass
-
 import warnings
 
 import torch
@@ -19,7 +13,7 @@ from pytorch_lightning.utilities.warnings import PossibleUserWarning
 from src import utils
 from src.datasets import qm9_dataset
 from src.datasets.spectre_dataset import Comm20DataModule, SpectreDatasetInfos
-from src.metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstractMetrics
+from src.metrics.abstract_metrics import TrainAbstractMetricsDiscrete
 from src.analysis.spectre_utils import Comm20SamplingMetrics
 from src.diffusion_model_discrete import DiscreteDenoisingDiffusion
 from src.metrics.molecular_metrics import SamplingMolecularMetrics
@@ -47,15 +41,15 @@ def main(cfg: DictConfig):
     if dataset_config['name'] == 'comm-20':
         # Load the dataset, split it and prepare dataloaders for PL.
         datamodule = Comm20DataModule(cfg)
-        sampling_metrics = Comm20SamplingMetrics(datamodule.dataloaders['test'])
-
         dataset_infos = SpectreDatasetInfos(datamodule, dataset_config)
-        train_metrics = TrainAbstractMetricsDiscrete() if cfg.model.type == 'discrete' else TrainAbstractMetrics()
+        train_metrics = TrainAbstractMetricsDiscrete()
+        sampling_metrics = Comm20SamplingMetrics(datamodule.dataloaders['test'])
         visualization_tools = NonMolecularVisualization()
 
-        extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
+        extra_features = ExtraFeatures(dataset_infos)
         domain_features = DummyExtraFeatures()
 
+        # TODO
         dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
                                                 domain_features=domain_features)
 
@@ -66,7 +60,7 @@ def main(cfg: DictConfig):
         train_smiles = qm9_dataset.get_train_smiles(cfg=cfg, train_dataloader=datamodule.train_dataloader(),
                                                     dataset_infos=dataset_infos, evaluate_dataset=False)
 
-        extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
+        extra_features = ExtraFeatures(dataset_infos)
         domain_features = ExtraMolecularFeatures(dataset_infos=dataset_infos)
 
         dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,

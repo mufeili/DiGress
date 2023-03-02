@@ -18,20 +18,6 @@ class TrainAbstractMetricsDiscrete(torch.nn.Module):
         pass
 
 
-class TrainAbstractMetrics(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, masked_pred_epsX, masked_pred_epsE, pred_y, true_epsX, true_epsE, true_y, log):
-        pass
-
-    def reset(self):
-        pass
-
-    def log_epoch_metrics(self, current_epoch):
-        pass
-
-
 class SumExceptBatchMetric(Metric):
     def __init__(self):
         super().__init__()

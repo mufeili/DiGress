@@ -1,9 +1,11 @@
-from src.diffusion.distributions import DistributionNodes
-import src.utils as utils
 import torch
 import pytorch_lightning as pl
+
 from torch_geometric.loader import DataLoader
 
+import src.utils as utils
+
+from src.diffusion.distributions import DistributionNodes
 
 class AbstractDataModule(pl.LightningDataModule):
     def __init__(self, cfg):
@@ -30,9 +32,12 @@ class AbstractDataModule(pl.LightningDataModule):
         return self.dataloaders['train'][idx]
 
     def node_counts(self, max_nodes_possible=300):
+        """Get the number of graphs with a given number of nodes and normalize
+        the values."""
         all_counts = torch.zeros(max_nodes_possible)
         for split in ['train', 'val', 'test']:
-            for i, data in enumerate(self.dataloaders[split]):
+            for data in self.dataloaders[split]:
+                # Get graph IDs in the batch and the number of nodes in each graph.
                 unique, counts = torch.unique(data.batch, return_counts=True)
                 for count in counts:
                     all_counts[count] += 1
@@ -57,6 +62,8 @@ class AbstractDataModule(pl.LightningDataModule):
         return counts
 
     def edge_counts(self):
+        """Count the number of edges of each type, including the absence of an
+        edge, and normalize the results."""
         num_classes = None
         for data in self.dataloaders['train']:
             num_classes = data.edge_attr.shape[1]
@@ -65,7 +72,7 @@ class AbstractDataModule(pl.LightningDataModule):
         d = torch.Tensor(num_classes)
 
         for split in ['train', 'val', 'test']:
-            for i, data in enumerate(self.dataloaders[split]):
+            for data in self.dataloaders[split]:
                 unique, counts = torch.unique(data.batch, return_counts=True)
 
                 all_pairs = 0
@@ -109,10 +116,13 @@ class AbstractDatasetInfos:
         self.output_dims = None
         self.num_classes = len(node_types)
         self.max_n_nodes = len(n_nodes) - 1
+        # Empirical distribution of the number of nodes in a graph
         self.nodes_dist = DistributionNodes(n_nodes)
 
     def compute_input_output_dims(self, datamodule, extra_features, domain_features):
         example_batch = next(iter(datamodule.train_dataloader()))
+        import ipdb
+        ipdb.set_trace()
         ex_dense, node_mask = utils.to_dense(example_batch.x, example_batch.edge_index, example_batch.edge_attr,
                                              example_batch.batch)
         example_data = {'X_t': ex_dense.X, 'E_t': ex_dense.E, 'y_t': example_batch['y'], 'node_mask': node_mask}
