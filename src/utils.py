@@ -54,26 +54,38 @@ def unnormalize(X, E, y, norm_values, norm_biases, node_mask, collapse=False):
 
 
 def to_dense(x, edge_index, edge_attr, batch):
+    """Get dense matrix representations of node and edge types."""
+    # X is of shape (batch_size, max_num_nodes, num_node_types?)
+    # node_mask for zero_padding, shape (batch_size, max_num_nodes)
     X, node_mask = to_dense_batch(x=x, batch=batch)
-    # node_mask = node_mask.float()
-    edge_index, edge_attr = torch_geometric.utils.remove_self_loops(edge_index, edge_attr)
-    # TODO: carefully check if setting node_mask as a bool breaks the continuous case
+    edge_index, edge_attr = torch_geometric.utils.remove_self_loops(edge_index,
+                                                                    edge_attr)
+    # TODO: check if setting node_mask as a bool breaks the continuous case
     max_num_nodes = X.size(1)
-    E = to_dense_adj(edge_index=edge_index, batch=batch, edge_attr=edge_attr, max_num_nodes=max_num_nodes)
+    # E is of shape (batch_size, max_num_nodes, max_num_nodes, num_edge_types?)
+    E = to_dense_adj(edge_index=edge_index, batch=batch, edge_attr=edge_attr,
+                     max_num_nodes=max_num_nodes)
     E = encode_no_edge(E)
 
     return PlaceHolder(X=X, E=E, y=None), node_mask
 
 
 def encode_no_edge(E):
+    """Treat the absence of edges as the first edge type, except for
+    self-loops."""
     assert len(E.shape) == 4
     if E.shape[-1] == 0:
         return E
+
+    # Use the first column of the edge attribute to indicate the absence of
+    # edges.
     no_edge = torch.sum(E, dim=3) == 0
     first_elt = E[:, :, :, 0]
     first_elt[no_edge] = 1
     E[:, :, :, 0] = first_elt
-    diag = torch.eye(E.shape[1], dtype=torch.bool).unsqueeze(0).expand(E.shape[0], -1, -1)
+    # Remove self-loops.
+    diag = torch.eye(E.shape[1], dtype=torch.bool).unsqueeze(0).expand(
+        E.shape[0], -1, -1)
     E[diag] = 0
     return E
 
