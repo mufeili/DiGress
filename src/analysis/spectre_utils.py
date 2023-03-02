@@ -34,7 +34,7 @@ def degree_worker(G):
     return np.array(nx.degree_histogram(G))
 
 
-def degree_stats(graph_ref_list, graph_pred_list, is_parallel=True):
+def degree_stats(graph_ref_list, graph_pred_list):
     ''' Compute the distance between the degree distributions of two unordered sets of graphs.
         Args:
             graph_ref_list, graph_target_list: two lists of networkx graphs to be evaluated
@@ -47,21 +47,12 @@ def degree_stats(graph_ref_list, graph_pred_list, is_parallel=True):
     ]
 
     prev = datetime.now()
-    if is_parallel:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            for deg_hist in executor.map(degree_worker, graph_ref_list):
-                sample_ref.append(deg_hist)
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            for deg_hist in executor.map(degree_worker, graph_pred_list_remove_empty):
-                sample_pred.append(deg_hist)
-    else:
-        for i in range(len(graph_ref_list)):
-            degree_temp = np.array(nx.degree_histogram(graph_ref_list[i]))
-            sample_ref.append(degree_temp)
-        for i in range(len(graph_pred_list_remove_empty)):
-            degree_temp = np.array(
-                nx.degree_histogram(graph_pred_list_remove_empty[i]))
-            sample_pred.append(degree_temp)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for deg_hist in executor.map(degree_worker, graph_ref_list):
+            sample_ref.append(deg_hist)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for deg_hist in executor.map(degree_worker, graph_pred_list_remove_empty):
+            sample_pred.append(deg_hist)
 
     # EMD option uses the same computation as GraphRNN, the alternative is MMD as computed by GRAN
     # mmd_dist = compute_mmd(sample_ref, sample_pred, kernel=emd)
@@ -85,8 +76,7 @@ def clustering_worker(param):
 
 def clustering_stats(graph_ref_list,
                      graph_pred_list,
-                     bins=100,
-                     is_parallel=True):
+                     bins=100):
     sample_ref = []
     sample_pred = []
     graph_pred_list_remove_empty = [
@@ -94,35 +84,14 @@ def clustering_stats(graph_ref_list,
     ]
 
     prev = datetime.now()
-    if is_parallel:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            for clustering_hist in executor.map(clustering_worker,
-                                                [(G, bins) for G in graph_ref_list]):
-                sample_ref.append(clustering_hist)
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            for clustering_hist in executor.map(
-                    clustering_worker, [(G, bins) for G in graph_pred_list_remove_empty]):
-                sample_pred.append(clustering_hist)
-
-        # check non-zero elements in hist
-        # total = 0
-        # for i in range(len(sample_pred)):
-        #    nz = np.nonzero(sample_pred[i])[0].shape[0]
-        #    total += nz
-        # print(total)
-    else:
-        for i in range(len(graph_ref_list)):
-            clustering_coeffs_list = list(nx.clustering(graph_ref_list[i]).values())
-            hist, _ = np.histogram(
-                clustering_coeffs_list, bins=bins, range=(0.0, 1.0), density=False)
-            sample_ref.append(hist)
-
-        for i in range(len(graph_pred_list_remove_empty)):
-            clustering_coeffs_list = list(
-                nx.clustering(graph_pred_list_remove_empty[i]).values())
-            hist, _ = np.histogram(
-                clustering_coeffs_list, bins=bins, range=(0.0, 1.0), density=False)
-            sample_pred.append(hist)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for clustering_hist in executor.map(clustering_worker,
+                                            [(G, bins) for G in graph_ref_list]):
+            sample_ref.append(clustering_hist)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for clustering_hist in executor.map(
+                clustering_worker, [(G, bins) for G in graph_pred_list_remove_empty]):
+            sample_pred.append(clustering_hist)
 
     # EMD option uses the same computation as GraphRNN, the alternative is MMD as computed by GRAN
     # mmd_dist = compute_mmd(sample_ref, sample_pred, kernel=emd, sigma=1.0 / 10)
@@ -207,18 +176,17 @@ def orbit_stats_all(graph_ref_list, graph_pred_list):
 
 
 class Comm20SamplingMetrics(nn.Module):
-    def __init__(self, dataloaders):
+    def __init__(self, test_loader):
         super().__init__()
 
-        self.test_graphs = self.loader_to_nx(dataloaders['test'])
-        self.metrics_list = ['degree', 'clustering', 'orbit']
+        self.test_graphs = self.loader_to_nx(test_loader)
 
     def loader_to_nx(self, loader):
         networkx_graphs = []
-        for i, batch in enumerate(loader):
+        for batch in loader:
             # TODO: this does not run with current loader
             data_list = batch.to_data_list()
-            for j, data in enumerate(data_list):
+            for data in data_list:
                 networkx_graphs.append(to_networkx(data, node_attrs=None, edge_attrs=None, to_undirected=True,
                                                    remove_self_loops=True))
         return networkx_graphs
@@ -237,28 +205,27 @@ class Comm20SamplingMetrics(nn.Module):
             nx_graph = nx.from_numpy_array(A)
             networkx_graphs.append(nx_graph)
 
-
         print("Saving all adjacency matrices")
         np.savez('generated_adjs.npz', *adjacency_matrices)
 
-        if 'degree' in self.metrics_list:
-            print("Computing degree stats..")
-            degree = degree_stats(self.test_graphs, networkx_graphs, is_parallel=True)
-            wandb.run.summary['degree'] = degree
+        # degree metric
+        print("Computing degree stats..")
+        degree = degree_stats(self.test_graphs, networkx_graphs, is_parallel=True)
+        wandb.run.summary['degree'] = degree
 
         to_log = {}
 
-        if 'clustering' in self.metrics_list:
-            print("Computing clustering stats...")
-            clustering = clustering_stats(self.test_graphs, networkx_graphs, bins=100, is_parallel=True)
-            to_log['clustering'] = clustering
-            wandb.run.summary['clustering'] = clustering
+        # 'clustering' metric
+        print("Computing clustering stats...")
+        clustering = clustering_stats(self.test_graphs, networkx_graphs, bins=100, is_parallel=True)
+        to_log['clustering'] = clustering
+        wandb.run.summary['clustering'] = clustering
 
-        if 'orbit' in self.metrics_list:
-            print("Computing orbit stats...")
-            orbit = orbit_stats_all(self.test_graphs, networkx_graphs)
-            to_log['orbit'] = orbit
-            wandb.run.summary['orbit'] = orbit
+        # orbit metric
+        print("Computing orbit stats...")
+        orbit = orbit_stats_all(self.test_graphs, networkx_graphs)
+        to_log['orbit'] = orbit
+        wandb.run.summary['orbit'] = orbit
 
         print("Sampling statistics", to_log)
         wandb.log(to_log, commit=False)

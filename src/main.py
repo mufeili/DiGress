@@ -47,7 +47,7 @@ def main(cfg: DictConfig):
     if dataset_config['name'] == 'comm-20':
         # Load the dataset, split it and prepare dataloaders for PL.
         datamodule = Comm20DataModule(cfg)
-        sampling_metrics = Comm20SamplingMetrics(datamodule.dataloaders)
+        sampling_metrics = Comm20SamplingMetrics(datamodule.dataloaders['test'])
 
         dataset_infos = SpectreDatasetInfos(datamodule, dataset_config)
         train_metrics = TrainAbstractMetricsDiscrete() if cfg.model.type == 'discrete' else TrainAbstractMetrics()
