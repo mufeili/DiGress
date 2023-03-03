@@ -1,5 +1,4 @@
 import torch
-# from torch_geometric.transforms import largest_connected_components
 from src import utils
 
 
@@ -14,13 +13,25 @@ class DummyExtraFeatures:
         return utils.PlaceHolder(X=empty_x, E=empty_e, y=empty_y)
 
 
+def batch_diagonal(X):
+    """Extracts the diagonal from the last two dims of a tensor"""
+    return torch.diagonal(X, dim1=-2, dim2=-1)
+
+
+def batch_trace(X):
+    """
+    Expect a matrix of shape B N N, returns the trace in shape B
+    :param X:
+    :return:
+    """
+    diag = torch.diagonal(X, dim1=-2, dim2=-1)
+    trace = diag.sum(dim=-1)
+    return trace
+
+
 class KNodeCycles:
     """ Builds cycle counts for each node in a graph.
     """
-
-    def __init__(self):
-        super().__init__()
-
     def calculate_kpowers(self):
         self.k1_matrix = self.adj_matrix.float()
         self.d = self.adj_matrix.sum(dim=-1)
@@ -31,7 +42,7 @@ class KNodeCycles:
         self.k6_matrix = self.k5_matrix @ self.adj_matrix.float()
 
     def k3_cycle(self):
-        """ tr(A ** 3). """
+        """ tr(A ** 3)."""
         c3 = batch_diagonal(self.k3_matrix)
         return (c3 / 2).unsqueeze(-1).float(), (torch.sum(c3, dim=-1) / 6).unsqueeze(-1).float()
 
@@ -91,8 +102,8 @@ class NodeCycleFeatures:
         self.kcycles = KNodeCycles()
 
     def __call__(self, noisy_data):
+        # Recover adjacency matrix by excluding the non-exisetence edge type.
         adj_matrix = noisy_data['E_t'][..., 1:].sum(dim=-1).float()
-
         x_cycles, y_cycles = self.kcycles.k_cycles(adj_matrix=adj_matrix)   # (bs, n_cycles)
         x_cycles = x_cycles.type_as(adj_matrix) * noisy_data['node_mask'].unsqueeze(-1)
         # Avoid large values when the graph is dense
@@ -101,53 +112,6 @@ class NodeCycleFeatures:
         x_cycles[x_cycles > 1] = 1
         y_cycles[y_cycles > 1] = 1
         return x_cycles, y_cycles
-
-
-class EigenFeatures:
-    """
-    Code taken from : https://github.com/Saro00/DGN/blob/master/models/pytorch/eigen_agg.py
-    """
-    def __call__(self, noisy_data):
-        E_t = noisy_data['E_t']
-        mask = noisy_data['node_mask']
-        A = E_t[..., 1:].sum(dim=-1).float() * mask.unsqueeze(1) * mask.unsqueeze(2)
-        L = compute_laplacian(A, normalize=False)
-        mask_diag = 2 * L.shape[-1] * torch.eye(A.shape[-1]).type_as(L).unsqueeze(0)
-        mask_diag = mask_diag * (~mask.unsqueeze(1)) * (~mask.unsqueeze(2))
-        L = L * mask.unsqueeze(1) * mask.unsqueeze(2) + mask_diag
-
-        eigvals, eigvectors = torch.linalg.eigh(L)
-        eigvals = eigvals.type_as(A) / torch.sum(mask, dim=1, keepdim=True)
-        eigvectors = eigvectors * mask.unsqueeze(2) * mask.unsqueeze(1)
-        # Retrieve eigenvalues features
-        n_connected_comp, batch_eigenvalues = get_eigenvalues_features(eigenvalues=eigvals)
-
-        # Retrieve eigenvectors features
-        nonlcc_indicator, k_lowest_eigenvector = get_eigenvectors_features(vectors=eigvectors,
-                                                                           node_mask=noisy_data['node_mask'],
-                                                                           n_connected=n_connected_comp)
-        return n_connected_comp, batch_eigenvalues, nonlcc_indicator, k_lowest_eigenvector
-
-
-class ExtraFeatures:
-    def __init__(self, dataset_info):
-        self.max_n_nodes = dataset_info.max_n_nodes
-        self.ncycles = NodeCycleFeatures()
-        self.eigenfeatures = EigenFeatures()
-
-    def __call__(self, noisy_data):
-        n = noisy_data['node_mask'].sum(dim=1).unsqueeze(1) / self.max_n_nodes
-        x_cycles, y_cycles = self.ncycles(noisy_data)       # (bs, n_cycles)
-
-        eigenfeatures = self.eigenfeatures(noisy_data)
-        E = noisy_data['E_t']
-        extra_edge_attr = torch.zeros((*E.shape[:-1], 0)).type_as(E)
-        n_components, batched_eigenvalues, nonlcc_indicator, k_lowest_eigvec = eigenfeatures   # (bs, 1), (bs, 10),
-                                                                                                # (bs, n, 1), (bs, n, 2)
-
-        return utils.PlaceHolder(X=torch.cat((x_cycles, nonlcc_indicator, k_lowest_eigvec), dim=-1),
-                                 E=extra_edge_attr,
-                                 y=torch.hstack((n, y_cycles, n_components, batched_eigenvalues)))
 
 
 def compute_laplacian(adjacency, normalize: bool):
@@ -236,21 +200,50 @@ def get_eigenvectors_features(vectors, node_mask, n_connected, k=2):
     return not_lcc_indicator, first_k_ev
 
 
-def batch_trace(X):
+class EigenFeatures:
     """
-    Expect a matrix of shape B N N, returns the trace in shape B
-    :param X:
-    :return:
+    Code taken from : https://github.com/Saro00/DGN/blob/master/models/pytorch/eigen_agg.py
     """
-    diag = torch.diagonal(X, dim1=-2, dim2=-1)
-    trace = diag.sum(dim=-1)
-    return trace
+    def __call__(self, noisy_data):
+        E_t = noisy_data['E_t']
+        mask = noisy_data['node_mask']
+        A = E_t[..., 1:].sum(dim=-1).float() * mask.unsqueeze(1) * mask.unsqueeze(2)
+        L = compute_laplacian(A, normalize=False)
+        mask_diag = 2 * L.shape[-1] * torch.eye(A.shape[-1]).type_as(L).unsqueeze(0)
+        mask_diag = mask_diag * (~mask.unsqueeze(1)) * (~mask.unsqueeze(2))
+        L = L * mask.unsqueeze(1) * mask.unsqueeze(2) + mask_diag
+
+        eigvals, eigvectors = torch.linalg.eigh(L)
+        eigvals = eigvals.type_as(A) / torch.sum(mask, dim=1, keepdim=True)
+        eigvectors = eigvectors * mask.unsqueeze(2) * mask.unsqueeze(1)
+        # Retrieve eigenvalues features
+        n_connected_comp, batch_eigenvalues = get_eigenvalues_features(eigenvalues=eigvals)
+
+        # Retrieve eigenvectors features
+        nonlcc_indicator, k_lowest_eigenvector = get_eigenvectors_features(vectors=eigvectors,
+                                                                           node_mask=noisy_data['node_mask'],
+                                                                           n_connected=n_connected_comp)
+        return n_connected_comp, batch_eigenvalues, nonlcc_indicator, k_lowest_eigenvector
 
 
-def batch_diagonal(X):
-    """
-    Extracts the diagonal from the last two dims of a tensor
-    :param X:
-    :return:
-    """
-    return torch.diagonal(X, dim1=-2, dim2=-1)
+class ExtraFeatures:
+    """Compute extra node, edge, and graph features."""
+    def __init__(self, dataset_info):
+        self.max_n_nodes = dataset_info.max_n_nodes
+        self.ncycles = NodeCycleFeatures()
+        self.eigenfeatures = EigenFeatures()
+
+    def __call__(self, noisy_data):
+        # Number of nodes in each graph divided by maximum number of nodes
+        n = noisy_data['node_mask'].sum(dim=1).unsqueeze(1) / self.max_n_nodes
+        x_cycles, y_cycles = self.ncycles(noisy_data)       # (bs, n_cycles)
+
+        eigenfeatures = self.eigenfeatures(noisy_data)
+        E = noisy_data['E_t']
+        extra_edge_attr = torch.zeros((*E.shape[:-1], 0)).type_as(E)
+        n_components, batched_eigenvalues, nonlcc_indicator, k_lowest_eigvec = eigenfeatures   # (bs, 1), (bs, 10),
+                                                                                                # (bs, n, 1), (bs, n, 2)
+
+        return utils.PlaceHolder(X=torch.cat((x_cycles, nonlcc_indicator, k_lowest_eigvec), dim=-1),
+                                 E=extra_edge_attr,
+                                 y=torch.hstack((n, y_cycles, n_components, batched_eigenvalues)))

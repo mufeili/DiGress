@@ -49,7 +49,6 @@ def main(cfg: DictConfig):
         extra_features = ExtraFeatures(dataset_infos)
         domain_features = DummyExtraFeatures()
 
-        # TODO
         dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
                                                 domain_features=domain_features)
 

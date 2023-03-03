@@ -26,7 +26,6 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         self.cfg = cfg
         self.name = cfg.general.name
-        self.model_dtype = torch.float32
         self.T = cfg.model.diffusion_steps
 
         self.Xdim = input_dims['X']
