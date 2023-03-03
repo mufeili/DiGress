@@ -1,73 +1,18 @@
 import torch
-from torch import Tensor
 import torch.nn as nn
-from torchmetrics import Metric, MeanSquaredError, MetricCollection
 import time
 import wandb
-from src.metrics.abstract_metrics import SumExceptBatchMetric, SumExceptBatchMSE, SumExceptBatchKL, CrossEntropyMetric, \
-    ProbabilityMetric, NLL
-
-
-class NodeMSE(MeanSquaredError):
-    def __init__(self, *args):
-        super().__init__(*args)
-
-
-class EdgeMSE(MeanSquaredError):
-    def __init__(self, *args):
-        super().__init__(*args)
-
-
-class TrainLoss(nn.Module):
-    def __init__(self):
-        super(TrainLoss, self).__init__()
-        self.train_node_mse = NodeMSE()
-        self.train_edge_mse = EdgeMSE()
-        self.train_y_mse = MeanSquaredError()
-
-    def forward(self, masked_pred_epsX, masked_pred_epsE, pred_y, true_epsX, true_epsE, true_y, log: bool):
-        mse_X = self.train_node_mse(masked_pred_epsX, true_epsX) if true_epsX.numel() > 0 else 0.0
-        mse_E = self.train_edge_mse(masked_pred_epsE, true_epsE) if true_epsE.numel() > 0 else 0.0
-        mse_y = self.train_y_mse(pred_y, true_y) if true_y.numel() > 0 else 0.0
-        mse = mse_X + mse_E + mse_y
-
-        if log:
-            to_log = {'train_loss/batch_mse': mse.detach(),
-                      'train_loss/node_MSE': self.train_node_mse.compute(),
-                      'train_loss/edge_MSE': self.train_edge_mse.compute(),
-                      'train_loss/y_mse': self.train_y_mse.compute()}
-            wandb.log(to_log, commit=True)
-
-        return mse
-
-    def reset(self):
-        for metric in (self.train_node_mse, self.train_edge_mse, self.train_y_mse):
-            metric.reset()
-
-    def log_epoch_metrics(self, current_epoch, start_epoch_time):
-        epoch_node_mse = self.train_node_mse.compute() if self.train_node_mse.total > 0 else -1
-        epoch_edge_mse = self.train_edge_mse.compute() if self.train_edge_mse.total > 0 else -1
-        epoch_y_mse = self.train_y_mse.compute() if self.train_y_mse.total > 0 else -1
-
-        to_log = {"train_epoch/epoch_X_mse": epoch_node_mse,
-                  "train_epoch/epoch_E_mse": epoch_edge_mse,
-                  "train_epoch/epoch_y_mse": epoch_y_mse}
-        print(f"Epoch {current_epoch}: X_mse: {epoch_node_mse :.3f} -- E mse: {epoch_edge_mse :.3f} --"
-              f" y_mse: {epoch_y_mse :.3f} -- {time.time() - start_epoch_time:.1f}s ")
-
-        wandb.log(to_log)
-
-        for metric in [self.train_node_mse, self.train_edge_mse, self.train_y_mse]:
-            metric.reset()
+from src.metrics.abstract_metrics import CrossEntropyMetric
 
 
 class TrainLossDiscrete(nn.Module):
-    """ Train with Cross entropy"""
     def __init__(self, lambda_train):
         super().__init__()
         self.node_loss = CrossEntropyMetric()
         self.edge_loss = CrossEntropyMetric()
         self.y_loss = CrossEntropyMetric()
+        # Coefficients for weighting the loss terms related to node, edge,
+        # and graph.
         self.lambda_train = lambda_train
 
     def forward(self, masked_pred_X, masked_pred_E, pred_y, true_X, true_E, true_y, log: bool):
@@ -123,6 +68,3 @@ class TrainLossDiscrete(nn.Module):
 
         print(f"Epoch {current_epoch} finished: X: {epoch_node_loss :.2f} -- E: {epoch_edge_loss :.2f} "
               f"y: {epoch_y_loss :.2f} -- {time.time() - start_epoch_time:.1f}s ")
-
-
-

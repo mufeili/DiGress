@@ -31,6 +31,10 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         self.Xdim = input_dims['X']
         self.Edim = input_dims['E']
         self.ydim = input_dims['y']
+        print(f'node feature size: {self.Xdim},',
+              f'edge feature size: {self.Edim},',
+              f'graph feature size: {self.ydim}')
+
         self.Xdim_output = output_dims['X']
         self.Edim_output = output_dims['E']
         self.ydim_output = output_dims['y']
@@ -59,6 +63,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         self.extra_features = extra_features
         self.domain_features = domain_features
 
+        # TODO
         self.model = GraphTransformer(n_layers=cfg.model.n_layers,
                                       input_dims=input_dims,
                                       hidden_mlp_dims=cfg.model.hidden_mlp_dims,
@@ -121,7 +126,6 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
     def on_fit_start(self) -> None:
         self.train_iterations = len(self.trainer.datamodule.train_dataloader())
-        print("Size of the input features", self.Xdim, self.Edim, self.ydim)
 
     def on_train_epoch_start(self) -> None:
         print("Starting train epoch...")
